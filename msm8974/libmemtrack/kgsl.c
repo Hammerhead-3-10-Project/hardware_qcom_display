@@ -52,7 +52,6 @@ int kgsl_memtrack_get_memory(pid_t pid, enum memtrack_type type,
     bool is_surfaceflinger = false;
     size_t accounted_size = 0;
     size_t unaccounted_size = 0;
-    unsigned long smaps_addr = 0;
 
     *num_records = ARRAY_SIZE(record_templates);
 
@@ -74,7 +73,7 @@ int kgsl_memtrack_get_memory(pid_t pid, enum memtrack_type type,
     memcpy(records, record_templates,
            sizeof(struct memtrack_record) * allocated_records);
 
-    snprintf(tmp, sizeof(tmp), "/d/kgsl/proc/%d/mem", pid);
+    sprintf(tmp, "/d/kgsl/proc/%d/mem", pid);
     fp = fopen(tmp, "r");
     if (fp == NULL) {
         return -errno;
@@ -106,12 +105,10 @@ int kgsl_memtrack_get_memory(pid_t pid, enum memtrack_type type,
         }
 
         if (type == MEMTRACK_TYPE_GL && strcmp(line_type, "gpumem") == 0) {
-
             if (flags[5] == 'Y')
                 accounted_size += size;
             else
                 unaccounted_size += size;
-
         } else if (type == MEMTRACK_TYPE_GRAPHICS && strcmp(line_type, "ion") == 0) {
             if (!is_surfaceflinger || strcmp(line_usage, "egl_image") != 0) {
                 unaccounted_size += size;
