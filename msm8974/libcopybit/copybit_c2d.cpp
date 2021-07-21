@@ -38,6 +38,7 @@
 #include <cutils/ashmem.h>
 #include <linux/ashmem.h>
 #include <gralloc_priv.h>
+#include <cutils/threads.h>
 
 #include <copybit.h>
 #include <alloc_controller.h>
@@ -194,22 +195,22 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
                         struct hw_device_t** device);
 
 static struct hw_module_methods_t copybit_module_methods = {
-open:  open_copybit
+    .open = open_copybit
 };
 
 /*
  * The COPYBIT Module
  */
 struct copybit_module_t HAL_MODULE_INFO_SYM = {
-common: {
-tag: HARDWARE_MODULE_TAG,
-     version_major: 1,
-     version_minor: 0,
-     id: COPYBIT_HARDWARE_MODULE_ID,
-     name: "QCT COPYBIT C2D 2.0 Module",
-     author: "Qualcomm",
-     methods: &copybit_module_methods
-        }
+    .common = {
+        .tag = HARDWARE_MODULE_TAG,
+        .version_major = 1,
+        .version_minor = 0,
+        .id = COPYBIT_HARDWARE_MODULE_ID,
+        .name = "QCT COPYBIT C2D 2.0 Module",
+        .author = "Qualcomm",
+        .methods = &copybit_module_methods
+    }
 };
 
 
@@ -218,7 +219,7 @@ static void* c2d_wait_loop(void* ptr) {
     copybit_context_t* ctx = (copybit_context_t*)(ptr);
     char thread_name[64] = "copybitWaitThr";
     prctl(PR_SET_NAME, (unsigned long) &thread_name, 0, 0, 0);
-    setpriority(PRIO_PROCESS, 0, HAL_PRIORITY_URGENT_DISPLAY);
+    androidSetThreadPriority(0, HAL_PRIORITY_URGENT_DISPLAY);
 
     while(ctx->stop_thread == false) {
         pthread_mutex_lock(&ctx->wait_cleanup_lock);
@@ -259,6 +260,8 @@ static void* c2d_wait_loop(void* ptr) {
 static int get_format(int format) {
     switch (format) {
         case HAL_PIXEL_FORMAT_RGB_565:        return C2D_COLOR_FORMAT_565_RGB;
+        case HAL_PIXEL_FORMAT_RGB_888:        return C2D_COLOR_FORMAT_888_RGB |
+                                              C2D_FORMAT_SWAP_RB;
         case HAL_PIXEL_FORMAT_RGBX_8888:      return C2D_COLOR_FORMAT_8888_ARGB |
                                               C2D_FORMAT_SWAP_RB |
                                                   C2D_FORMAT_DISABLE_ALPHA;
@@ -316,6 +319,9 @@ int c2diGetBpp(int32 colorformat)
         case C2D_COLOR_FORMAT_8888_RGBA:
         case C2D_COLOR_FORMAT_8888_ARGB:
             c2dBpp = 32;
+            break;
+        case C2D_COLOR_FORMAT_888_RGB:
+            c2dBpp = 24;
             break;
         case C2D_COLOR_FORMAT_8_L:
         case C2D_COLOR_FORMAT_8_A:
@@ -397,6 +403,7 @@ static int is_supported_rgb_format(int format)
     switch(format) {
         case HAL_PIXEL_FORMAT_RGBA_8888:
         case HAL_PIXEL_FORMAT_RGBX_8888:
+        case HAL_PIXEL_FORMAT_RGB_888:
         case HAL_PIXEL_FORMAT_RGB_565:
         case HAL_PIXEL_FORMAT_BGRA_8888: {
             return COPYBIT_SUCCESS;
@@ -1428,6 +1435,16 @@ static int blit_copybit(
     return status;
 }
 
+/** Fill the rect on dst with RGBA color **/
+static int fill_color(struct copybit_device_t *dev,
+                      struct copybit_image_t const *dst,
+                      struct copybit_rect_t const *rect,
+                      uint32_t color)
+{
+    // TODO: Implement once c2d driver supports color fill
+    return -EINVAL;
+}
+
 /*****************************************************************************/
 
 static void clean_up(copybit_context_t* ctx)
@@ -1561,6 +1578,7 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
     ctx->device.finish = finish_copybit;
     ctx->device.flush_get_fence = flush_get_fence_copybit;
     ctx->device.clear = clear_copybit;
+    ctx->device.fill_color = fill_color;
 
     /* Create RGB Surface */
     surfDefinition.buffer = (void*)0xdddddddd;
